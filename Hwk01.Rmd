@@ -1,0 +1,158 @@
+---
+title: "Homework 1"
+author: "Jules Pellin"
+date: "4/16/2026"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r clear-env}
+# Clear all previously defined objects from the environment before starting
+rm(list = ls())
+```
+
+---
+
+## Question 1 – Vectors
+
+### Engine 1
+
+```{r engine1}
+# Create a named numeric vector with five engine measurements
+engine1 <- c(163.00, 3.60, 10.30, 0.58, 3.10)
+
+# Assign names matching the homework output
+names(engine1) <- c(
+  "Displacement (cc)",
+  "Net Power Out (kW)",
+  "Net Torque (Nm)",
+  "Oil Capacity (l)",
+  "Fuel Tank Capacity (l)"
+)
+
+# Print the named vector
+print(engine1)
+
+# Validate it is a vector
+is.vector(engine1)
+
+# Inspect structure and attributes
+str(engine1)
+```
+
+**Comment:** Running str() on engine 1 Named num [1:5], tells us that the data type is numeric because all five values contain decimal places such as 3.60 and 0.58. The vector has five elements and the names attribute confirms that each one has a label attached to it. is.vector() returns true, so the structure is what we expected.
+
+### Engine 2
+
+```{r engine2}
+# Convert engine1 to character as efficiently as possible
+# as.character() applied directly to the existing object
+engine2 <- as.character(engine1)
+
+# Reuse the names from engine1 (not copied automatically)
+names(engine2) <- names(engine1)
+
+# Print the character vector
+print(engine2)
+
+# Inspect structure
+str(engine2)
+```
+
+**Comment:** Running str()`on engine 2  now shows `Named chr [1:5]`, so the data type has changed from numeric to character. The values are still the same numbers but now they are stored as text, which you can see from the quotation marks around each one in the output. The names attribute carried over from engine1. The main thing that changed is that you can no longer do math on engine2 since R treats the values as text strings rather than actual numbers.
+
+---
+
+## Question 2 – Family
+
+```{r family}
+# Create a named character vector of family members
+# Element names indicate the relationship; values are the actual names
+family <- c(
+  self    = "Jules",
+  father  = "Olivier",
+  mother  = "Claire",
+  sibling = "Marius"
+)
+
+# Print and inspect
+print(family)
+str(family)
+is.vector(family)
+```
+
+**Comment:** The family vector is a named character vector. Each element name describes the relationship like father or mother, and each value holds the actual name of that person. is.vector() returns TRUE because attaching names does not change the structure of the vector, it only adds a names attribute that you can see when running str()
+
+---
+
+## Question 3 – Matrices
+
+### (a) Create the 3 × 5 matrix
+
+```{r matrix-a}
+# The 15 values follow a sequence from -3.3 to 28.9 in steps of 2.3
+mat_vals <- seq(from = -3.3, by = 2.3, length.out = 15)
+
+# Build the matrix: 3 rows, 5 columns, filled row by row
+mat_a <- matrix(mat_vals, nrow = 3, ncol = 5, byrow = TRUE)
+
+# Assign column names
+colnames(mat_a) <- c("AA", "BB", "CC", "DD", "EE")
+
+# Print and inspect
+print(mat_a)
+str(mat_a)
+```
+
+**Comment:** Running str() on mat_a shows num [1:3, 1:5], so this is a 2-dimensional numeric matrix with 3 rows and 5 columns, giving us 15 elements total. The data type is numeric and the column names AA through EE are stored as a dimnames attribute. One important thing to note is that byrow = TRUE was necessary here because R fills matrices column by column by default, so leaving it out would have put the numbers in the wrong order
+
+---
+
+### (b) Arithmetic with the matrix
+
+```{r matrix-b}
+# Add 3.3 to every element, then divide every element by 2.3
+mat_b <- (mat_a + 3.3) / 2.3
+
+# Print result
+print(mat_b)
+str(mat_b)
+```
+
+**Comment:** Adding 3.3 to every element shifts all values up by 3.3, and then dividing by 2.3 scales them all down. R applies these operations element by element across the entire matrix. The result is a clean sequence from 0 to 14, which you can verify by hand: (-3.3 + 3.3) / 2.3 = 0, (-1.0 + 3.3) / 2.3 = 1, and so on. The matrix stays 3 rows by 5 columns and the data type remains numeric throughout.
+
+---
+
+### (c) Reshape to a 5 × 3 matrix
+
+```{r matrix-c}
+# R stores matrices column-first internally.
+# mat_a has 15 elements; reshaping to 5x3 (also 15 elements) using the
+# same column-first fill order produces the target layout.
+mat_c <- matrix(mat_a, nrow = 5, ncol = 3)
+
+# Print and inspect
+print(mat_c)
+str(mat_c)
+```
+
+**Comment:** Running str() shows num [1:5, 1:3], so the matrix is now 5 rows by 3 columns and still numeric. By passing mat_a directly into matrix(), R reads the 15 values in column-first order and fills the new shape the same way, so no manual re-entry of data was needed. The column names from mat_a are not carried over when reshaping this way, which is why the headers show as [,1], [,2], [,3], matching the target output from the assignment.
+
+---
+
+### (d) Integer version of the 5 × 3 matrix
+
+```{r matrix-d}
+# Convert mat_c to integer using as.integer()
+# as.integer() TRUNCATES decimals — it does NOT round
+mat_d <- matrix(as.integer(mat_c), nrow = 5, ncol = 3)
+
+# Print and inspect
+print(mat_d)
+str(mat_d)
+```
+
+**Comment:** Running str() now shows int [1:5, 1:3], meaning the data type changed from numeric to integer. as.integer() cuts off the decimal part without rounding, so for example 19.7 becomes 19 and 28.9 becomes 28. One interesting thing to notice is that the value at position [1,2] shows 21 instead of 22. This happens because of floating point precision: what looks like 22.0 is actually stored internally as something like 21.9999 due to how seq() builds the sequence. Since as.integer() strictly cuts off decimals, 21.999 becomes 21 and not 22. This is exactly why the notes emphasize that as.integer() does not round.
