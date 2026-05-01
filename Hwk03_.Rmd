@@ -1,0 +1,272 @@
+---
+title: "Homework 3 - Data in R"
+author: "Jules Pellin"
+date: "4/30/2026"
+output:
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r clear-env}
+# Clear all previously defined objects from the environment before starting
+rm(list = ls())
+```
+
+# Question 1 – Iris Data
+
+## (a) Read in Iris Data
+
+```{r q1a-read-iris}
+# Read the iris data from a local file
+# The file has no header row so header = FALSE
+iris.df <- read.csv(
+  "iris.data",
+  header = FALSE,
+  stringsAsFactors = TRUE
+)
+
+# Assign column names based on the metadata on the UCI website
+colnames(iris.df) <- c("sepal.length", "sepal.width",
+                       "petal.length", "petal.width", "class")
+
+# Convert class to a factor since it is a categorical variable
+iris.df$class <- as.factor(iris.df$class)
+
+# Confirm data types are correct
+str(iris.df)
+
+# Use head() and summary() to inspect without dumping the full dataset
+head(iris.df)
+summary(iris.df)
+```
+
+The first four columns are numeric, measuring sepal and petal dimensions in centimeters. The class column is converted to a factor using as.factor() so that R treats it as a categorical variable with three levels: Iris-setosa, Iris-versicolor, and Iris-virginica. Running str() confirms all data types are correct.
+
+## (b) Subsets and Summaries
+
+```{r q1b-versicolor}
+# Subset: only Iris-versicolor observations
+iris.versicolor <- iris.df[iris.df$class == "Iris-versicolor", ]
+
+summary(iris.versicolor)
+```
+
+```{r q1b-width-subset}
+# Subset: petal width > 1.5 OR sepal width > 3.0
+iris.wide <- iris.df[iris.df$petal.width > 1.5 | iris.df$sepal.width > 3.0, ]
+
+summary(iris.wide)
+```
+
+There is a clear relationship between width measurements and iris class. Iris-setosa tends to have wider sepals but narrower petals, while Iris-virginica has the widest petals overall. When filtering by width, the resulting subset captures mostly Iris-setosa and Iris-virginica, with very few Iris-versicolor observations. This suggests that width measurements are quite useful for telling the three species apart.
+
+# Question 2 – Cars
+
+## (a) Read in Car Data
+
+```{r q2a-read-cars}
+# Read in the car.csv file with stringsAsFactors = TRUE
+# since all columns are categorical data
+cars.df <- read.csv("car.csv", stringsAsFactors = TRUE)
+
+# Inspect without printing the full dataset
+head(cars.df)
+summary(cars.df)
+```
+
+Since all columns are categorical, stringsAsFactors = TRUE converts them to factors automatically. The summary shows factor levels and counts for each variable.
+
+## (b) Remove Rows with Missing Values
+
+```{r q2b-remove-na}
+# Use is.na() to identify and remove rows with any missing values
+# complete.cases() returns TRUE for rows with no NA values
+cars.clean <- cars.df[complete.cases(cars.df), ]
+
+# Show dimensions before and after
+dim(cars.df)
+dim(cars.clean)
+
+summary(cars.clean)
+```
+
+complete.cases() returns TRUE for rows with no missing values in any column. Comparing the dimensions before and after removal shows exactly how many rows were dropped.
+
+## (c) Remove Duplicate Rows
+
+```{r q2c-remove-duplicates}
+# Remove duplicate rows from the NA-free dataset using duplicated()
+# duplicated() returns TRUE for rows that are exact copies of an earlier row
+cars.final <- cars.clean[!duplicated(cars.clean), ]
+
+# Show dimensions and summary after removing duplicates
+dim(cars.final)
+summary(cars.final)
+```
+
+duplicated() marks any row that is an exact copy of a previous row as TRUE. Using !duplicated() keeps only the first occurrence of each unique row, and the dimensions confirm how many duplicates were removed.
+
+# Question 3 – Functions
+
+## (a) Create trim.CV Function
+
+```{r q3a-trimCV-function}
+# Create the trim.CV function that:
+# 1. Removes outliers using the 1.5*IQR rule
+# 2. Computes the coefficient of variation (sd/mean) on the trimmed data
+
+trim.CV <- function(x) {
+  # Compute Q1, Q3 and IQR
+  Q1  <- quantile(x, 0.25)
+  Q3  <- quantile(x, 0.75)
+  iqr <- IQR(x)
+
+  # Flag and remove outliers: values more than 1.5*IQR above Q3 or below Q1
+  trimmed <- x[!(x - Q3 > 1.5 * iqr | Q1 - x > 1.5 * iqr)]
+
+  # Compute and return the coefficient of variation
+  return(sd(trimmed) / mean(trimmed))
+}
+```
+
+The function computes Q1, Q3, and the IQR, then removes any value more than 1.5 times the IQR above Q3 or below Q1. It then computes the coefficient of variation (standard deviation divided by mean), which is useful for comparing spread across variables with different units.
+
+## (b) Compute trim.CV for Sepal Width
+
+```{r q3b-trimCV-sepalwidth}
+# Apply the trim.CV function to the sepal width column of the iris data
+trim.CV(iris.df$sepal.width)
+```
+
+The trim.CV value for sepal width shows how much variability exists after removing potential outliers. A lower value means measurements are tightly clustered around the mean, while a higher value indicates more spread.
+
+# Question 4 – Group Statistics
+
+## (a) tapply – Group Standard Deviations for Petal Width
+
+```{r q4a-tapply}
+# Use tapply to compute standard deviation of petal width grouped by class
+tapply(iris.df$petal.width, iris.df$class, sd)
+```
+
+Iris-setosa has very little variation in petal width, meaning its petals are very consistent in size. Iris-versicolor and Iris-virginica show more spread, with Iris-virginica having the highest. This suggests petal width is a reliable identifier for Iris-setosa but less useful for distinguishing the other two species.
+
+## (b) aggregate – Group Medians for All Numeric Variables
+
+```{r q4b-aggregate}
+# Use aggregate to compute group medians for all numeric columns
+# grouping by class
+aggregate(. ~ class,
+          data  = iris.df[, c("sepal.length", "sepal.width",
+                               "petal.length", "petal.width", "class")],
+          FUN   = median)
+```
+
+The group medians show clear differences across all four measurements. Iris-setosa has noticeably smaller petals but wider sepals compared to the other two species, while Iris-virginica consistently has the largest measurements overall. Together the four numeric variables are quite useful for distinguishing between species.
+
+# Question 5 – apply and for Loops
+
+## (a) apply – Column-wise Sums
+
+```{r q5a-apply-colsums}
+# Use apply() to compute column-wise sums for the four numeric columns
+# MARGIN = 2 means apply the function over columns (1 = rows, 2 = columns)
+apply(iris.df[, 1:4], 2, sum)
+```
+
+apply() with MARGIN = 2 applies the sum function to each column independently. The result is the total sum of all measurements for each of the four numeric variables across all 150 observations.
+
+## (b) Ratio of Length to Width with for()
+
+```{r q5b-for-loop}
+# Compute iris.ratio = (sepal.length + petal.length) / (sepal.width + petal.width)
+# for each observation using a for loop
+
+# Initialize an empty vector to store results
+iris.ratio <- numeric(nrow(iris.df))
+
+# Loop through each row and compute the ratio
+for (i in 1:nrow(iris.df)) {
+  iris.ratio[i] <- (iris.df$sepal.length[i] + iris.df$petal.length[i]) /
+                   (iris.df$sepal.width[i]  + iris.df$petal.width[i])
+}
+
+# Compute the fraction of observations with ratio > 2.5
+mean(iris.ratio > 2.5)
+```
+
+The for loop goes through every row, computes the ratio of total length to total width, and stores the result in a vector. mean(iris.ratio \> 2.5) then gives the fraction of observations where the ratio exceeds 2.5, since taking the mean of a logical vector returns the proportion of TRUE values.
+
+## (c) Ratio of Length to Width with apply()
+
+```{r q5c-apply-ratio}
+# Repeat the ratio calculation using apply() instead of a for loop
+# MARGIN = 1 means apply the function row by row
+iris.ratio.apply <- apply(iris.df[, 1:4], 1, function(row) {
+  (row[1] + row[3]) / (row[2] + row[4])
+})
+
+# Confirm the fraction matches the for loop result
+mean(iris.ratio.apply > 2.5)
+```
+
+apply() with MARGIN = 1 applies the function to each row and is more concise than the for loop. Both approaches give the same result, but apply() is generally preferred in R because it is cleaner and often faster on large datasets.
+
+# Question 6 – Ecoli Data
+
+## (a) Read in Ecoli Data
+
+```{r q6a-read-ecoli}
+# The UCI URL is no longer accessible, so ecoli.data was downloaded
+# manually from the same source and read in locally
+# The file is space-separated with no header
+ecoli.df <- read.table(
+  "ecoli.data.txt",
+  header = FALSE
+
+)
+
+# Assign column names based on the UCI metadata
+colnames(ecoli.df) <- c("sequence.name", "mcg", "gvh", "lip",
+                         "chg", "aac", "alm1", "alm2", "class")
+
+# Convert sequence name and class to factors
+ecoli.df$sequence.name <- as.factor(ecoli.df$sequence.name)
+ecoli.df$class         <- as.factor(ecoli.df$class)
+
+# Inspect
+head(ecoli.df)
+summary(ecoli.df)
+```
+
+The ecoli dataset has one character identifier column, seven numeric measurement columns, and one categorical class column. Converting the sequence name and class to factors ensures they are treated correctly in summaries and analyses.
+
+## (b) lapply and sapply – Extract Data Types
+
+```{r q6b-data-types}
+# Use lapply to extract the data class of each column
+# lapply always returns a list
+lapply(ecoli.df, data.class)
+
+# Use sapply to do the same thing
+# sapply simplifies the result to a named vector when possible
+sapply(ecoli.df, data.class)
+```
+
+Both lapply() and sapply() apply data.class() to each column. The difference is in the output format: lapply() always returns a list, while sapply() simplifies the result to a named character vector when possible. For something like extracting data types, sapply() is much easier to read at a glance.
+
+## (c) sapply – Column Sums for Numeric Columns
+
+```{r q6c-sapply-sums}
+# Use sapply to compute the sum for each numeric column
+# First identify numeric columns
+numeric.cols <- sapply(ecoli.df, is.numeric)
+
+# Then apply sum only to those columns
+sapply(ecoli.df[, numeric.cols], sum)
+```
+
+sapply() is used in two steps: first to identify which columns are numeric, then to compute the sum for each of those columns. The key difference from apply() is that apply() requires a matrix input and works over rows or columns, while sapply() works directly on a data frame and applies a function to each column. Since a data frame is essentially a list of columns, sapply() is the more natural choice here.
