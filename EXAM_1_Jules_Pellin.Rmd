@@ -1,0 +1,154 @@
+---
+title: "EXAM 1"
+author: "Jules Pellin"
+date: "2026-05-08"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Question 1
+
+R has five main data structures. First, we have the **Vectors**, they are one-dimensional sequences where all elements must be the same type, which means that they are the building block of every other structure in R. Then we have the **Matrices**, they are two-dimensional and also require all elements to be the same type, making them the most efficient for numerical operations. **Arrays**, they extend matrices to more than two dimensions but are rarely used in standard data analysis. The **Lists** are the most generic structure because they have no type restrictions, meaning each element can be anything, including other lists, vectors, or matrices. This makes them ideal for storing heterogeneous or hierarchical data. The **Data frames** are the most useful structure for data analysis, since they are two-dimensional like a matrix, but each column can hold a different type. For example, when you import a CSV with read.csv(), you get a data frame. In practice, vectors are used for single variables, matrices for uniform numerical data, lists when data is mixed or nested, and data frames for any tabular dataset.
+
+## Question 2
+
+### Q2a & b
+For Q2a, I used list.files() to iterate through all subfolders and read 
+each CSV file into R, then combined them into a single data frame using 
+rbind(). For Q2b, I extracted the county name, crop name, latitude, and 
+longitude directly from the file path structure and added them as four 
+new columns to the merged data frame.
+
+```{r}
+# Set base path
+base_path <- "C:/Users/pelli/Downloads/CropModelResults/CropModelResults"
+
+# Get all CSV file paths with full absolute paths
+all_files <- list.files(base_path, recursive = TRUE, 
+                        full.names = TRUE, pattern = "seasonal_result\\.csv$")
+
+# Read all files into a list, adding metadata columns
+all_data_list <- lapply(all_files, function(f) {
+  temp  <- read.csv(f)
+  parts <- strsplit(f, "/")[[1]]
+  n     <- length(parts)
+  
+  # Extract county, crop, and lat/lon from path
+  county_name   <- parts[n-3]
+  crop_name     <- parts[n-2]
+  latlon_str    <- parts[n-1]
+  lat_lon_split <- strsplit(latlon_str, "N")[[1]]
+  
+  temp$county    <- county_name
+  temp$crop      <- crop_name
+  temp$latitude  <- as.numeric(lat_lon_split[1])
+  temp$longitude <- -as.numeric(gsub("W", "", lat_lon_split[2]))
+  temp
+})
+
+# Combine all into one data frame
+merged_df <- do.call(rbind, all_data_list)
+
+str(merged_df)
+head(merged_df)
+```
+
+## Q2c
+
+For Q2c, I renamed the columns "irrig" to "irrigation_demand" and "precip" 
+to "precipitation" using colnames(). I then exported the merged data frame 
+as a CSV file using write.csv().
+```{r}
+# ── Q2c: Rename columns and export as CSV ──────────────────────────
+
+# Rename irrig to irrigation_demand and precip to precipitation
+colnames(merged_df)[colnames(merged_df) == "irrig"]  <- "irrigation_demand"
+colnames(merged_df)[colnames(merged_df) == "precip"] <- "precipitation"
+
+# Verify the rename worked
+colnames(merged_df)
+
+# Export as CSV
+write.csv(merged_df, "C:/Users/pelli/Documents/econ396/merged_crop_data.csv", row.names = FALSE)
+```
+
+###Q2d
+
+For Q2d, I used aggregate() to summarize the total annual irrigation 
+demand grouped by crop name and county name.
+```{r}
+# ── Q2d: Summarize annual irrigation demand by crop and county ──────
+
+# Aggregate total irrigation demand by crop and county
+irrigation_summary <- aggregate(irrigation_demand ~ crop + county, 
+                                data = merged_df, 
+                                FUN = sum)
+
+# Print the summary
+print(irrigation_summary)
+```
+
+###Q2e
+
+For Q2e, I extracted the year from the date column, then subsetted the 
+data for Winter Wheat in Walla Walla at the specific coordinates 
+46.03125N, -118.40625W, and calculated the average yield for three 
+different year ranges.
+```{r}
+# ── Q2e: Average yield of Winter Wheat in Walla Walla ──────────────
+
+# Extract year from the date column
+merged_df$year <- as.integer(substr(merged_df$YYYY.MM.DD.DOY., 1, 4))
+
+# Subset for the specific location
+ww <- merged_df[merged_df$county == "WallaWalla" & 
+                merged_df$crop == "Winter_Wheat" & 
+                merged_df$latitude == 46.03125 & 
+                merged_df$longitude == -118.40625, ]
+
+# Average yield for each year range
+mean_1981_1990 <- mean(ww$yield[ww$year >= 1981 & ww$year <= 1990])
+mean_1991_2000 <- mean(ww$yield[ww$year >= 1991 & ww$year <= 2000])
+mean_2001_2019 <- mean(ww$yield[ww$year >= 2001 & ww$year <= 2019])
+
+print(mean_1981_1990)
+print(mean_1991_2000)
+print(mean_2001_2019)
+```
+
+###Q2f
+
+For Q2f, I subsetted the data for Corn grain between 2001 and 2019, 
+then calculated the average yield per location using aggregate(), 
+and identified the location with the highest average yield.
+```{r}
+# ── Q2f: Highest average yield for Corn grain (2001-2019) ──────────
+
+# Subset for Corn grain between 2001 and 2019
+corn <- merged_df[merged_df$crop == "Corn_grain" & 
+                  merged_df$year >= 2001 & 
+                  merged_df$year <= 2019, ]
+
+# Average yield by location
+corn_avg <- aggregate(yield ~ county + latitude + longitude, 
+                      data = corn, 
+                      FUN = mean)
+
+# Print all averages
+print(corn_avg)
+
+# Identify the highest yield location
+corn_avg[which.max(corn_avg$yield), ]
+```
+
+## Question 3
+
+Honestly, the data provided was not well described. I found a lot of missing information that includes units for the variables (e.g. is yield in kg/ha? is irrigation in mm?), a description of what each column represents, and the source and model used to generate the data.
+
+As best practice, metadata should include a clear description of each 
+variable and its units, the data source and collection method, spatial 
+and temporal coverage, and any limitations of the data.
+
