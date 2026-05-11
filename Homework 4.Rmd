@@ -1,0 +1,204 @@
+---
+title: "Homework 4"
+author: "Jules Pellin"
+date: "2026-05-11"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+## Question 1: What is Tidy Data?
+
+Hadley Wickham's paper defines tidy data as a standard way of organizing 
+datasets to make analysis easier. In other words, a dataset is tidy when it follows three 
+rules: 1) every variable forms a column; 2) every observation forms a row; 3) and 
+every type of observational unit forms its own table. This structure makes 
+it straightforward to filter, transform, aggregate, and visualize data 
+because each variable is always in a consistent, predictable location.
+
+Wickham points out that most real-world datasets are messy, and identifies 
+five common problems: 1) column headers that are values instead of variable 
+names; 2) multiple variables stored in one column; 3)variables stored in both 
+rows and columns, 4) multiple types of observations in one table, 5) and one type 
+of observation spread across multiple tables. Each of these problems requires 
+a different tidying technique, such as melting (stacking columns into rows) 
+or casting (rotating rows back into columns).
+
+The practical importance of tidy data is that it works seamlessly with tidy 
+tools functions that take tidy input and return tidy output. So, for example, in R, packages 
+like ggplot2 and dplyr are designed around tidy data, meaning that once your 
+data is tidy, analysis and visualization become much simpler and faster.
+
+## Question 2
+
+For Question 2, I loaded the COVID-19 dataset directly from GitHub and 
+filtered it to European countries with a population over 1 million. I then 
+aggregated new cases per million by month and country, identified the six 
+countries with the highest case rates in April, and produced a log2 line 
+chart highlighting those six countries. I repeated the same process for 
+October.
+
+```{r}
+# Load required packages
+library(tidyverse)
+library(lubridate)
+library(gghighlight)
+
+# Load COVID-19 data from GitHub URL
+covid_df <- read.csv(
+  "https://raw.githubusercontent.com/owid/covid-19-data/master/public/data/owid-covid-data.csv",
+  header = TRUE
+)
+
+# Convert date column to Date type
+covid_df$date <- as.Date(covid_df$date)
+
+# Filter to Europe + population > 1 million
+europe_df <- covid_df %>%
+  filter(continent == "Europe") %>%
+  filter(population > 1000000)
+
+# Create month column
+europe_df <- europe_df %>%
+  mutate(month = floor_date(date, "month"))
+
+# Summarise cases per month per country
+plot_data <- europe_df %>%
+  group_by(location, month) %>%
+  summarise(cases_per_month = sum(new_cases_per_million, na.rm = TRUE)) %>%
+  ungroup()
+
+# Find top 6 countries by April cases
+top6_april <- plot_data %>%
+  filter(format(month, "%m") == "04") %>%
+  group_by(location) %>%
+  summarise(april_total = sum(cases_per_month, na.rm = TRUE)) %>%
+  arrange(desc(april_total)) %>%
+  slice_head(n = 6)
+
+# Add flag column for April top 6
+plot_data <- plot_data %>%
+  mutate(april_high = ifelse(location %in% top6_april$location, 1, 0))
+
+# Plot: April highlight
+ggplot(plot_data,
+       aes(x = month, y = cases_per_month,
+           group = location, color = location)) +
+  geom_line() +
+  gghighlight(april_high == 1, use_direct_label = FALSE) +
+  scale_y_continuous(trans = "log2") +
+  labs(title = "COVID-19 Cases per Month - European Countries (April Highlight)",
+       x = "Month", y = "Cases per Million (log2 scale)")
+```
+
+### Q2b - October
+
+The following plot repeats the same analysis but highlights the six 
+countries with the highest COVID-19 case rates in October instead of April.
+
+```{r}
+# Find top 6 countries by October cases
+top6_oct <- plot_data %>%
+  filter(format(month, "%m") == "10") %>%
+  group_by(location) %>%
+  summarise(oct_total = sum(cases_per_month, na.rm = TRUE)) %>%
+  arrange(desc(oct_total)) %>%
+  slice_head(n = 6)
+
+# Add flag column for October top 6
+plot_data <- plot_data %>%
+  mutate(oct_high = ifelse(location %in% top6_oct$location, 1, 0))
+
+# Plot: October highlight
+ggplot(plot_data,
+       aes(x = month, y = cases_per_month,
+           group = location, color = location)) +
+  geom_line() +
+  gghighlight(oct_high == 1, use_direct_label = FALSE) +
+  scale_y_continuous(trans = "log2") +
+  labs(title = "COVID-19 Cases per Month - European Countries (October Highlight)",
+       x = "Month", y = "Cases per Million (log2 scale)")
+```
+
+## Question 3
+
+For Question 3, I repeated the same pipeline but used new_deaths_per_million 
+instead of new_cases_per_million to show monthly death rates. I highlighted 
+the six countries with the highest death rates for April and then October.
+
+```{r}
+# Summarise DEATHS per month per country
+death_data <- europe_df %>%
+  group_by(location, month) %>%
+  summarise(deaths_per_month = sum(new_deaths_per_million, na.rm = TRUE)) %>%
+  ungroup()
+
+# Find top 6 countries by April deaths
+top6_april_d <- death_data %>%
+  filter(format(month, "%m") == "04") %>%
+  group_by(location) %>%
+  summarise(april_total = sum(deaths_per_month, na.rm = TRUE)) %>%
+  arrange(desc(april_total)) %>%
+  slice_head(n = 6)
+
+# Add flag column
+death_data <- death_data %>%
+  mutate(april_high = ifelse(location %in% top6_april_d$location, 1, 0))
+
+# Plot: April deaths
+ggplot(death_data,
+       aes(x = month, y = deaths_per_month,
+           group = location, color = location)) +
+  geom_line() +
+  gghighlight(april_high == 1, use_direct_label = FALSE) +
+  labs(title = "COVID-19 Deaths per Month - European Countries (April Highlight)",
+       x = "Month", y = "Deaths per Million")
+```
+
+### Q3b - October
+
+The following plot repeats the same analysis but highlights the six 
+countries with the highest COVID-19 death rates in October instead of April.
+
+```{r}
+# Find top 6 countries by October deaths
+top6_oct_d <- death_data %>%
+  filter(format(month, "%m") == "10") %>%
+  group_by(location) %>%
+  summarise(oct_total = sum(deaths_per_month, na.rm = TRUE)) %>%
+  arrange(desc(oct_total)) %>%
+  slice_head(n = 6)
+
+# Add flag column for October
+death_data <- death_data %>%
+  mutate(oct_high = ifelse(location %in% top6_oct_d$location, 1, 0))
+
+# Plot: October deaths
+ggplot(death_data,
+       aes(x = month, y = deaths_per_month,
+           group = location, color = location)) +
+  geom_line() +
+  gghighlight(oct_high == 1, use_direct_label = FALSE) +
+  labs(title = "COVID-19 Deaths per Month - European Countries (October Highlight)",
+       x = "Month", y = "Deaths per Million")
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
