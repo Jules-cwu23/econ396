@@ -1,0 +1,304 @@
+---
+title: "Homework 5"
+author: "Jules Pellin"
+date: "2026-05-18"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+# Question 1
+
+```{r q1-load, message=FALSE, warning=FALSE}
+# Load required packages
+library(readxl)
+library(tidyverse)
+
+# Read COVID and demographic data (files are Excel format despite .csv extension)
+covid <- read_excel("US-cnty-COVID.csv")
+demo  <- read_excel("US-cnty-demo.csv")
+
+# Examine both files
+head(covid)
+head(demo)
+str(covid)
+str(demo)
+```
+```{r q1-merge}
+# Merge by BOTH county AND state to avoid duplicate county name bug
+# (e.g. King County exists in both WA and TX)
+merged <- merge(covid, demo,
+                by.x = c("County", "State"),
+                by.y = c("County.name", "ST.Name"))
+
+# Verify row count — should still be 3,142
+nrow(merged)
+
+# Create rate columns
+merged$cases_per_pop    <- merged$Cases  / merged$TotalPop
+merged$deaths_per_pop   <- merged$Deaths / merged$TotalPop
+merged$deaths_per_senior <- merged$Deaths / merged$Pop.Over65
+
+head(merged)
+```
+```{r q1-arrange}
+# i) Arrange by cases per population (highest first)
+cases_ranked <- arrange(merged, desc(cases_per_pop))
+head(cases_ranked[, c("County", "State", "cases_per_pop")])
+
+# ii) Arrange by deaths per population (highest first)
+deaths_ranked <- arrange(merged, desc(deaths_per_pop))
+head(deaths_ranked[, c("County", "State", "deaths_per_pop")])
+
+# iii) Arrange by deaths per senior population (highest first)
+# Exclude counties where Pop.Over65 = 0 (division by zero gives Inf)
+senior_ranked <- arrange(merged, desc(deaths_per_senior))
+senior_ranked_clean <- senior_ranked[is.finite(senior_ranked$deaths_per_senior), ]
+head(senior_ranked_clean[, c("County", "State", "deaths_per_senior")])
+```
+The three rankings reveal very different patterns of COVID burden across US counties.
+
+Ranked by cases per population, small counties with large institutional populations top the 
+list: prisons (Trousdale, TN; Norton, KS) and military bases (Chattahoochee, GA) explain 
+the extreme rates, as these dense enclosed environments drive rapid transmission regardless 
+of county size.
+
+Ranked by deaths per population, a different set of small rural counties appears (Gove, KS; 
+Jerauld, SD; Hancock, GA), likely reflecting older and more vulnerable local populations 
+where fatality rates ran high even with fewer total cases.
+
+The senior population ranking required filtering out counties with zero seniors recorded, 
+which produced Inf values from division by zero. Once cleaned, this ranking surfaces Native 
+American reservation counties (McKinley, NM; Big Horn, MT) and urban areas like the Bronx, 
+NY, pointing to the disproportionate COVID toll on those communities.
+
+No single metric tells the full story. The rankings diverge significantly depending on which 
+dimension of burden is measured, which is exactly why looking at all three together matters.
+
+
+# Question 2
+
+```{r q2-load, message=FALSE, warning=FALSE}
+# Load all three World Bank files
+wbh      <- read_csv("worldbankhealth.csv")
+wbh_class <- read_csv("WorldBankCountryClassClean.csv")
+wbh_desc  <- read_csv("WorldBankHealth-VarDescClean.csv")
+
+# Examine each file
+head(wbh)
+str(wbh)
+head(wbh_class)
+head(wbh_desc)
+```
+
+```{r q2-reshape, message=FALSE, warning=FALSE}
+# Remove country_name and indicator_name — codes already capture this info
+wbh2 <- wbh %>% select(-country_name, -indicator_name)
+
+# Pivot wider: one row per country per year, each indicator becomes a column
+wbh_wide <- wbh2 %>%
+  pivot_wider(names_from = indicator_code, values_from = value)
+
+# Examine the result
+dim(wbh_wide)
+head(wbh_wide[, 1:6])
+```
+
+
+```{r q2-select-cols, message=FALSE, warning=FALSE}
+# Count NAs per column
+na_counts <- apply(is.na(wbh_wide), MARGIN = 2, sum)
+
+# Convert to data frame and sort by fewest NAs
+na_df <- data.frame(column = names(na_counts), na_count = na_counts) %>%
+  arrange(na_count)
+
+head(na_df, 15)
+
+# Select 11 columns with fewest NAs
+top11_cols <- na_df$column[1:11]
+wbh_final <- wbh_wide %>% select(all_of(top11_cols))
+
+dim(wbh_final)
+head(wbh_final)
+```
+Removing the two name columns keeps things cleaner since the codes already 
+identify each country and indicator. After pivoting wider, each indicator gets 
+its own column with one row per country per year. As expected, a lot of NAs show 
+up since not every country reports every indicator every year. The 11 columns with 
+the fewest NAs all turn out to be population and urbanization indicators, which 
+makes sense as those tend to be the most consistently reported across countries.
+
+# Question 3 - Box Plots
+
+## Sepal width - base R
+```{r q3-boxplot-base}
+# Base R box plot of sepal width as instructed
+boxplot(iris$Sepal.Width,
+        main = "Sepal Width",
+        ylab = "Width (cm)")
+```
+```{r q3-sepal-length}
+# Vertical orientation is cleaner for a single variable
+ggplot(iris, aes(y = Sepal.Length)) +
+  geom_boxplot() +
+  labs(title = "Sepal Length",
+       y = "Length (cm)") +
+  theme(axis.text.x = element_blank(),
+        axis.ticks.x = element_blank())
+```
+
+
+Sepal length across all iris observations has a median around 5.8 cm with the middle 
+50% of values falling between roughly 5.1 and 6.4 cm. The distribution is fairly 
+symmetric with no obvious outliers, and the whiskers extend from about 4.3 to 7.9 cm.
+
+## Petal length vs class - ggplot
+```{r q3-petal-length}
+# Notched box plot of petal length by species, colored by species
+ggplot(iris, aes(x = Species, y = Petal.Length, fill = Species)) +
+  geom_boxplot(notch = TRUE) +
+  labs(title = "Petal Length by Species",
+       x = "Species",
+       y = "Petal Length (cm)") +
+  theme(legend.position = "none")
+```
+
+
+Petal length differs dramatically across the three species. Setosa has by far the 
+shortest petals (median around 1.5 cm) with very little variation, while versicolor 
+sits in the middle (median around 4.3 cm) and virginica has the longest petals 
+(median around 5.6 cm). The notches on all three boxes do not overlap, which 
+indicates the medians are statistically significantly different from each other. 
+Setosa also shows two outliers, and its very tight IQR suggests it is the most 
+consistent of the three species in petal length.
+
+## Petal width vs class - strip, jitter and violin
+```{r q3-petal-width}
+# Strip plot
+ggplot(iris, aes(x = Species, y = Petal.Width, color = Species)) +
+  geom_jitter(width = 0.2) +
+  labs(title = "Petal Width by Species (Strip/Jitter)",
+       x = "Species", y = "Petal Width (cm)") +
+  theme(legend.position = "none")
+
+# Violin plot
+ggplot(iris, aes(x = Species, y = Petal.Width, fill = Species)) +
+  geom_violin() +
+  labs(title = "Petal Width by Species (Violin)",
+       x = "Species", y = "Petal Width (cm)") +
+  theme(legend.position = "none")
+```
+
+
+The jitter and violin plots tell the same story as the petal length analysis. Setosa 
+stands out immediately with petals clustered tightly at around 0.2 cm — the jitter 
+plot especially shows just how little variation there is across all 50 observations. 
+Versicolor sits in the middle with values centered around 1.3 cm, and virginica has 
+the widest petals, spreading mostly between 1.5 and 2.5 cm. The violin shapes are 
+worth noting too: setosa looks almost flat and pancake-like because nearly all its 
+values land at the same point, while virginica stretches tall showing more range in 
+the data.
+
+# Question 4 - Histograms
+
+## Sepal width - base R
+```{r q4-hist-base}
+# Base R frequency histogram of sepal width as instructed
+hist(iris$Sepal.Width,
+     main = "Sepal Width Distribution",
+     xlab = "Sepal Width (cm)",
+     col  = "steelblue")
+```
+
+
+Sepal width is centered around 3.0 cm and has a pretty classic bell shape, ranging 
+from about 2.0 to 4.4 cm. The tallest bar lands right at 3.0 with around 35 
+observations. There is a slight right skew with a longer tail on the upper end, 
+but overall the distribution is fairly symmetric.
+
+## Sepal length - ggplot frequency histogram + polygon
+```{r q4-sepal-length-hist}
+# Part 1: Frequency histogram
+# binwidth = 0.2 is the smallest that avoids empty bins
+ggplot(iris, aes(x = Sepal.Length)) +
+  geom_histogram(binwidth = 0.2, fill = "steelblue", color = "white") +
+  labs(title = "Sepal Length Frequency Histogram",
+       x = "Sepal Length (cm)",
+       y = "Count")
+
+# Part 2: Frequency polygon overlaid on histogram
+ggplot(iris, aes(x = Sepal.Length)) +
+  geom_histogram(binwidth = 0.2, fill = "steelblue", color = "white") +
+  geom_freqpoly(binwidth = 0.2, color = "red", linewidth = 1) +
+  labs(title = "Sepal Length with Frequency Polygon",
+       x = "Sepal Length (cm)",
+       y = "Count")
+```
+
+
+Sepal length ranges from about 4.3 to 7.9 cm with the tallest bar landing at 
+5.0 cm. Rather than one clean peak, the distribution has two humps, which makes 
+sense given that the three species have quite different sepal lengths pulling the 
+overall shape apart. The frequency polygon traces that pattern nicely, making the 
+rises and dips between bins easier to follow at a glance.
+
+## Petal length - density histogram + kernel density
+```{r q4-petal-length-density}
+# Part 1: Density histogram
+# binwidth = 0.2 is the smallest that avoids empty bins
+ggplot(iris, aes(x = Petal.Length)) +
+  geom_histogram(aes(y = after_stat(density)),
+                 binwidth = 0.2, fill = "steelblue", color = "white") +
+  labs(title = "Petal Length Density Histogram",
+       x = "Petal Length (cm)",
+       y = "Density")
+
+# Part 2: Kernel density estimator overlaid
+ggplot(iris, aes(x = Petal.Length)) +
+  geom_histogram(aes(y = after_stat(density)),
+                 binwidth = 0.2, fill = "steelblue", color = "white") +
+  geom_density(color = "red", linewidth = 1) +
+  labs(title = "Petal Length Density with KDE",
+       x = "Petal Length (cm)",
+       y = "Density")
+```
+
+
+Petal length has a very clear two-humped shape, a tall narrow spike around 1.0 to 
+1.5 cm and a broader second hump stretching from about 3.5 to 6.5 cm. That gap in 
+the middle is setosa completely separated from the other two species. The KDE line 
+smooths over the bin-by-bin noise and makes the bimodal structure even more obvious, 
+though it undersells the height of the setosa spike since it is spreading the density 
+across a wider range than the actual data.
+
+## Petal width by class - faceted histogram + polygon
+```{r q4-petal-width-facet}
+# Part 1: Faceted frequency histogram, vertical orientation
+ggplot(iris, aes(x = Petal.Width, fill = Species)) +
+  geom_histogram(binwidth = 0.2, color = "white") +
+  facet_wrap(~ Species, ncol = 1) +
+  labs(title = "Petal Width by Species (Faceted Histogram)",
+       x = "Petal Width (cm)",
+       y = "Count") +
+  theme(legend.position = "none")
+
+# Part 2: Faceted frequency polygon
+ggplot(iris, aes(x = Petal.Width, color = Species)) +
+  geom_freqpoly(binwidth = 0.2, linewidth = 1) +
+  facet_wrap(~ Species, ncol = 1) +
+  labs(title = "Petal Width by Species (Faceted Frequency Polygon)",
+       x = "Petal Width (cm)",
+       y = "Count") +
+  theme(legend.position = "none")
+```
+
+
+Breaking petal width out by species makes the differences really obvious. Setosa 
+spikes sharply right at 0.2 cm and drops off almost immediately, confirming how 
+tightly packed its values are. Versicolor has a much smoother, wider curve centered 
+around 1.3 cm with a fairly even spread on both sides. Virginica is the most spread 
+out of the three, with values running from about 1.4 to 2.5 cm and a flatter peak 
+around 2.0 cm. The faceted layout makes it easy to compare the shapes side by side 
+without the species overlapping and cluttering each other.
