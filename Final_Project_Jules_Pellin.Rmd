@@ -1,0 +1,177 @@
+---
+title: "Final Project"
+author: "Jules Pellin"
+date: "2026-05-28"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Objective
+
+This project analyzes the physical profiles of Olympic athletes across sports, 
+sexes, and time using 120 years of Olympic history data (1896–2016). The central 
+question is: how do height, weight, and BMI differ across sports, and how has the 
+average age of Olympic athletes changed over time? As a former competitive handball 
+player, I have a personal interest in understanding how athlete body types vary 
+across different disciplines.
+
+## Data
+
+The dataset comes from Kaggle and contains two files: athlete_events.csv with 
+271,116 observations across 15 variables (name, sex, age, height, weight, sport, 
+event, medal, year, country code), and noc_regions.csv which maps country codes 
+to region names. Each row represents one athlete's participation in one Olympic 
+event, making it tidy by definition, every column is a variable, every row is 
+an observation, and every cell contains a single value.
+
+```{r load, message=FALSE, warning=FALSE}
+library(tidyverse)
+library(ggridges)
+
+# Load both files
+athletes <- read.csv("athlete_events.csv")
+noc      <- read.csv("noc_regions.csv")
+
+head(athletes)
+str(athletes)
+```
+
+```{r clean, message=FALSE, warning=FALSE}
+# Join athlete data with region names by NOC code
+dat <- merge(athletes, noc, by = "NOC", all.x = TRUE)
+
+# Filter to Summer Olympics only
+dat <- dat[dat$Season == "Summer", ]
+
+# Remove rows where Height or Weight are NA (needed for physical analysis)
+dat_clean <- dat[!is.na(dat$Height) & !is.na(dat$Weight), ]
+
+# Calculate BMI
+dat_clean$BMI <- dat_clean$Weight / ((dat_clean$Height / 100)^2)
+
+# Report missing data handling
+cat("Original rows:", nrow(athletes), "\n")
+cat("After Summer filter:", nrow(dat), "\n")
+cat("After removing NA Height/Weight:", nrow(dat_clean), "\n")
+
+head(dat_clean[, c("Name", "Sport", "Height", "Weight", "BMI", "region")])
+```
+
+
+## Exploratory Analysis
+
+### Visualization 1 - Height distribution by sport (Ridge Plot)
+
+```{r viz1-ridge, message=FALSE, warning=FALSE}
+# Select top 10 sports by athlete count for readability
+top_sports <- dat_clean %>%
+  count(Sport) %>%
+  arrange(desc(n)) %>%
+  slice_head(n = 10) %>%
+  pull(Sport)
+
+ridge_dat <- dat_clean[dat_clean$Sport %in% top_sports, ]
+
+ggplot(ridge_dat, aes(x = Height, y = Sport, fill = Sport)) +
+  geom_density_ridges() +
+  labs(title = "Height Distribution Across Top 10 Olympic Sports",
+       x = "Height (cm)",
+       y = "Sport") +
+  theme_minimal() +
+  theme(legend.position = "none")
+```
+
+Height differences across sports are pretty striking. Gymnastics immediately jumps 
+out with its distribution sitting way to the left, shorter athletes just have a 
+natural advantage there. Wrestling has this interesting double-hump shape which 
+makes sense since it has so many different weight and size categories. Swimming, 
+Rowing, and Sailing all lean toward the taller end around 180-185 cm, while 
+Athletics has by far the widest spread, which you'd expect from a category that 
+lumps marathon runners and shot putters together.
+
+
+### Visualization 2 - Height vs Weight by Sex
+
+```{r viz2-scatter, message=FALSE, warning=FALSE}
+# Sample 3000 rows for readability
+set.seed(42)
+sample_dat <- dat_clean[sample(nrow(dat_clean), 3000), ]
+
+ggplot(sample_dat, aes(x = Height, y = Weight, color = Sex)) +
+  geom_point(alpha = 0.4, size = 1.5) +
+  labs(title = "Height vs Weight of Olympic Athletes by Sex",
+       x = "Height (cm)",
+       y = "Weight (kg)") +
+  theme_minimal()
+```
+
+
+There's a clear positive relationship between height and weight across all athletes. 
+Male athletes are consistently taller and heavier, with their cluster sitting notably 
+higher and to the right of the female cluster. Both sexes follow the same general 
+linear trend though, taller athletes weigh more regardless of sex. The few extreme 
+outliers at the top are likely weightlifters or shot putters where raw mass is an 
+advantage.
+
+
+
+### Visualization 3 - BMI by Sport
+
+```{r viz3-bmi, message=FALSE, warning=FALSE}
+ggplot(ridge_dat, aes(x = Sport, y = BMI, fill = Sport)) +
+  geom_boxplot() +
+  labs(title = "BMI Distribution Across Top 10 Olympic Sports",
+       x = "Sport",
+       y = "BMI") +
+  theme_minimal() +
+  theme(legend.position = "none",
+        axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+Gymnastics has the lowest median BMI of all sports, which makes sense given the 
+emphasis on strength-to-weight ratio and body control. Wrestling sits at the 
+highest end which is expected since heavier body mass can be an advantage and 
+the sport has multiple weight categories. Athletics has the most outliers by far, 
+again reflecting how diverse the events within it are. Most sports cluster between 
+a BMI of 22 and 26 which falls within the normal to athletic range.
+
+
+
+### Visualization 4 - Average athlete age over time
+
+```{r viz4-age, message=FALSE, warning=FALSE}
+age_trend <- dat_clean %>%
+  group_by(Year) %>%
+  summarise(avg_age = mean(Age, na.rm = TRUE))
+
+ggplot(age_trend, aes(x = Year, y = avg_age)) +
+  geom_line(color = "steelblue", linewidth = 1) +
+  geom_point(color = "steelblue", size = 2) +
+  labs(title = "Average Age of Olympic Athletes Over Time",
+       x = "Year",
+       y = "Average Age") +
+  theme_minimal()
+```
+
+Average age has been all over the place historically, which makes sense given how 
+different the early Olympics were from today. The spike around 1948 is interesting,
+that's likely athletes whose careers got interrupted by WWII finally getting their 
+shot. From the 1950s onward it dips as younger athletes started dominating, then 
+climbs steadily from 1980 to about 26.5 in 2016. That upward trend probably reflects 
+better sports science and recovery letting athletes compete at a high level for longer.
+
+
+## Reflection
+
+The biggest thing I learned from this project is how much cleaning and filtering 
+matters before you even think about visualizing. With 271,000 rows and over 60,000 
+NAs in Height and Weight alone, jumping straight into plots would have been complicated to organize. 
+Dropping the NA rows rather than filling them made more sense here since the whole 
+point was to analyze physical characteristics accurately. The ggridges package ended 
+up being one of my favorite parts, showing height distributions across 10 sports 
+in one clean visual would have taken way more plots otherwise. Overall I feel like 
+the project answered what I set out to explore: athlete body types genuinely differ 
+across sports, and Olympic athletes are getting older over time.
