@@ -1,0 +1,202 @@
+---
+title: "Exam 2"
+author: "Jules Pellin"
+date: "2026-05-28"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Question 1 - Add a year column using lubridate
+
+```{r q1-setup, message=FALSE, warning=FALSE}
+library(tidyverse)
+library(lubridate)
+
+# Load exam input file
+dat <- read.csv("Exam 2 Input File.csv")
+
+# Examine the data
+head(dat)
+str(dat)
+
+# The date column is formatted as "1980-08-27(240)" — strip the (DOY) part first
+dat$date_clean <- gsub("\\(.*\\)", "", dat$YYYY.MM.DD.DOY.)
+
+# Parse cleaned date and extract year
+dat$year <- year(ymd(dat$date_clean))
+
+# Verify
+head(dat[, c("YYYY.MM.DD.DOY.", "date_clean", "year")])
+```
+
+
+# Question 2 - Filter to ≤90th percentile by crop-county combination
+
+```{r q2-filter, message=FALSE, warning=FALSE}
+# Calculate 90th percentile threshold per crop-county group
+# then filter out rows above it
+dat_filtered <- dat %>%
+  group_by(county_name, crop) %>%
+  filter(irrigation_demand <= quantile(irrigation_demand, probs = 0.90)) %>%
+  ungroup()
+
+# Check how many rows were removed
+nrow(dat)
+nrow(dat_filtered)
+
+# Create irrigation demand CSV — keep county, crop, lat_lon, year, irrigation_demand
+irr <- dat_filtered %>%
+  select(county_name, crop, lat_lon, year, irrigation_demand)
+
+# Create yield CSV — keep county, crop, lat_lon, year, yield
+yld <- dat_filtered %>%
+  select(county_name, crop, lat_lon, year, yield)
+
+# Save both as CSV files
+write.csv(irr, "irrigation_demand.csv", row.names = FALSE)
+write.csv(yld, "yield.csv", row.names = FALSE)
+
+cat("Files saved successfully\n")
+```
+
+
+# Question 3 - Left, Right, and Full joins
+
+```{r q3-joins, message=FALSE, warning=FALSE}
+# Read the two CSV files back in
+irr2 <- read.csv("irrigation_demand.csv")
+yld2 <- read.csv("yield.csv")
+
+# Left join — keeps all irrigation rows, NAs for non-matching yield rows
+left_join_df <- merge(irr2, yld2, 
+                      by = c("county_name", "crop", "lat_lon", "year"), 
+                      all.x = TRUE)
+
+# Right join — keeps all yield rows, NAs for non-matching irrigation rows
+right_join_df <- merge(irr2, yld2, 
+                       by = c("county_name", "crop", "lat_lon", "year"), 
+                       all.y = TRUE)
+
+# Full join — keeps everything from both files
+full_join_df <- merge(irr2, yld2, 
+                      by = c("county_name", "crop", "lat_lon", "year"), 
+                      all = TRUE)
+
+# Compare row counts
+cat("Left join rows:", nrow(left_join_df), "\n")
+cat("Right join rows:", nrow(right_join_df), "\n")
+cat("Full join rows:", nrow(full_join_df), "\n")
+```
+
+All three joins return 430 rows because both CSV files came from the same filtered 
+dataset, just with different columns selected. Since every key combination exists 
+in both files, there are no non-matching rows either way. The row counts would only 
+differ if the two files had different key combinations.
+
+
+# Question 4 - Completeness check of full join
+
+```{r q4-completeness, message=FALSE, warning=FALSE}
+# Create a complete grid of ALL expected county-crop-year combinations
+all_combos <- expand.grid(
+  county_name = unique(full_join_df$county_name),
+  crop        = unique(full_join_df$crop),
+  year        = unique(full_join_df$year)
+)
+
+cat("Expected rows (complete grid):", nrow(all_combos), "\n")
+cat("Actual rows in full join:", nrow(full_join_df), "\n")
+cat("Missing rows (implicit NAs):", nrow(all_combos) - nrow(full_join_df), "\n")
+
+# Check for explicit NAs (rows exist but irrigation_demand is NA)
+cat("Explicit NAs in irrigation_demand:", sum(is.na(full_join_df$irrigation_demand)), "\n")
+```
+
+```{r q4-completeness-fixed, message=FALSE, warning=FALSE}
+# Use crossing() to build a proper complete grid
+# First get all unique location-crop pairs that actually exist
+location_crop_pairs <- full_join_df %>%
+  select(county_name, crop, lat_lon) %>%
+  distinct()
+
+# Cross with all unique years
+all_combos <- crossing(location_crop_pairs, year = unique(full_join_df$year))
+
+cat("Expected rows (complete grid):", nrow(all_combos), "\n")
+cat("Actual rows in full join:", nrow(full_join_df), "\n")
+
+# Find implicit NAs — combinations completely absent from the data
+implicit_missing <- anti_join(all_combos, full_join_df,
+                              by = c("county_name", "crop", "lat_lon", "year"))
+
+cat("Missing rows (implicit NAs):", nrow(implicit_missing), "\n")
+
+# Check explicit NAs
+cat("Explicit NAs in irrigation_demand:", sum(is.na(full_join_df$irrigation_demand)), "\n")
+```
+
+The full join data is not complete for all years across all groups. Out of 480 
+expected county-crop-year combinations, only 430 are present, leaving 50 missing 
+rows. All 50 are implicit NAs, meaning the rows are completely absent from the 
+data rather than present with NA values. This likely happened because the 90th 
+percentile filtering in Q2 removed enough rows from certain county-crop groups 
+that entire years dropped out entirely. There are zero explicit NAs in the 
+irrigation demand column.
+
+# Question 5 - Fill implicit NAs with county-crop average
+
+```{r q5-fill, message=FALSE, warning=FALSE}
+# Add missing rows to the full join with NA for irrigation_demand and yield
+complete_df <- full_join_df %>%
+  full_join(implicit_missing, by = c("county_name", "crop", "lat_lon", "year"))
+
+# Fill irrigation_demand NAs with county-crop group average
+complete_df <- complete_df %>%
+  group_by(county_name, crop) %>%
+  mutate(irrigation_demand_filled = ifelse(
+    is.na(irrigation_demand),
+    mean(irrigation_demand, na.rm = TRUE),
+    irrigation_demand
+  )) %>%
+  ungroup()
+
+cat("Rows in complete dataset:", nrow(complete_df), "\n")
+cat("NAs remaining after fill:", sum(is.na(complete_df$irrigation_demand_filled)), "\n")
+```
+
+
+# Question 6 - Missing rows data frame and comparison plot
+
+```{r q6-plot, message=FALSE, warning=FALSE}
+# Create data frame of only the originally missing rows
+# with both original (NA) and filled irrigation demand values
+missing_df <- complete_df %>%
+  filter(is.na(irrigation_demand)) %>%
+  select(county_name, crop, lat_lon, year, 
+         irrigation_demand_original = irrigation_demand,
+         irrigation_demand_filled)
+
+cat("Missing rows data frame:", nrow(missing_df), "rows\n")
+head(missing_df)
+
+# Plot: compare filled values across county-crop groups
+ggplot(missing_df, aes(x = irrigation_demand_filled, fill = crop)) +
+  geom_histogram(binwidth = 50, color = "white") +
+  facet_wrap(~ county_name, ncol = 2) +
+  labs(title = "Filled Irrigation Demand Values for Missing Rows",
+       x = "Irrigation Demand (filled with group average)",
+       y = "Count",
+       fill = "Crop") +
+  theme_minimal()
+```
+
+The 50 missing rows are spread across Okanogan, WallaWalla, and Yakima for both 
+Corn_grain and Winter_Wheat. Since every missing value gets filled with the same 
+group average, each bar lands at a single x-axis point instead of spreading out. 
+Okanogan and WallaWalla end up with identical fill values, while Yakima sits 
+noticeably higher around 450-500, which tracks given how irrigation-heavy that 
+region is. Since all missing rows had no original data to begin with, the filled 
+values are the only thing we can compare across groups.
