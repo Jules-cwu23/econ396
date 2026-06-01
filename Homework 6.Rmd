@@ -1,0 +1,255 @@
+---
+title: "Homework 6"
+author: "Jules Pellin"
+date: "2026-06-01"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Question 1 - Scatter Plots
+
+```{r q1-setup, message=FALSE, warning=FALSE}
+library(tidyverse)
+library(GGally)
+
+# Read iris data from UCI repository
+iris_df <- read.csv("https://archive.ics.uci.edu/ml/machine-learning-databases/iris/iris.data",
+                    header = FALSE)
+
+# Assign column names
+colnames(iris_df) <- c("Sepal.Length", "Sepal.Width", 
+                        "Petal.Length", "Petal.Width", "Class")
+
+# Examine the data
+head(iris_df)
+str(iris_df)
+summary(iris_df)
+```
+
+## Q1a - Base R Scatter Plot: Sepal Width vs Sepal Length
+
+```{r q1a-base, message=FALSE, warning=FALSE}
+plot(iris_df$Sepal.Width,
+     iris_df$Sepal.Length,
+     xlab = "Sepal Width (cm)",
+     ylab = "Sepal Length (cm)",
+     main = "Sepal Width vs Sepal Length (Base R)",
+     pch  = 16,
+     col  = "steelblue")
+```
+
+
+There's no strong relationship between sepal width and sepal length when looking 
+at all 150 observations together. The points are pretty scattered and the trend 
+is slightly negative, which is a bit counterintuitive. This is actually a classic 
+case where mixing all three species together masks what's really going on,
+breaking it out by class would likely tell a clearer story.
+
+## Q1b - ggplot2 Scatter Plot: Petal Width vs Sepal Width
+
+```{r q1b-ggplot, message=FALSE, warning=FALSE}
+ggplot(iris_df, aes(x = Petal.Width, y = Sepal.Width)) +
+  geom_point(shape = 16, color = "steelblue", size = 2) +
+  labs(title    = "Petal Width vs Sepal Width",
+       subtitle = "Iris Dataset",
+       x        = "Petal Width (cm)",
+       y        = "Sepal Width (cm)") +
+  theme_minimal()
+```
+
+
+There's a weak negative relationship between petal width and sepal width, as petal 
+width increases, sepal width tends to drop slightly. The cluster of points on the 
+left with high sepal width values is almost certainly setosa, which has narrow petals 
+but wider sepals. Without coloring by class it's hard to see much structure here, 
+which is exactly what Q1c fixes.
+
+
+## Q1c - ggplot2 Scatter Plot: Petal Width vs Sepal Width by Class
+
+```{r q1c-ggplot-class, message=FALSE, warning=FALSE}
+ggplot(iris_df, aes(x = Petal.Width, y = Sepal.Width, color = Class)) +
+  geom_point(shape = 4, size = 2) +
+  labs(title    = "Petal Width vs Sepal Width by Species",
+       subtitle = "Iris Dataset",
+       x        = "Petal Width (cm)",
+       y        = "Sepal Width (cm)") +
+  theme_minimal()
+```
+
+
+Adding color makes everything click. Setosa is completely on its own on the left 
+with narrow petals and wide sepals, while versicolor and virginica overlap a bit 
+but are still fairly distinct. The negative trend from Q1b was basically just 
+setosa dragging the left side up while the other two pulled the right side down.
+
+# Question 2 - Scatter Plot Matrices
+
+## Q2a - Base R pairs()
+
+```{r q2a-pairs, message=FALSE, warning=FALSE}
+pairs(iris_df[, 1:4],
+      main   = "Iris: Base R Pairs Matrix",
+      labels = colnames(iris_df[, 1:4]),
+      pch    = 16,
+      col    = "steelblue")
+```
+
+
+## Q2b - GGally ggpairs() with correlation coefficients
+
+```{r q2b-ggpairs, message=FALSE, warning=FALSE}
+ggpairs(iris_df[, 1:4],
+        title = "Iris Data - Scatter Plot Matrix")
+```
+
+
+The numbers confirm what we suspected. Petal length and petal width have an almost 
+perfect correlation at 0.963, they basically move together. Sepal length also 
+connects well with both petal measurements, but sepal width is kind of the odd one 
+out with weak or slightly negative correlations across the board. The bimodal density 
+curves for petal measurements are a clear hint that the three species are pulling the 
+data in different directions.
+
+## Q2c - GGally ggpairs() colored by class
+
+```{r q2c-ggpairs-class, message=FALSE, warning=FALSE}
+ggpairs(iris_df,
+        columns = 1:4,
+        mapping = aes(color = Class),
+        title   = "Iris Data by Species Class")
+```
+
+
+Breaking it out by species changes things quite a bit. The petal length vs petal 
+width correlation drops from 0.963 overall to as low as 0.306 within setosa,
+versicolor is the only one holding a strong relationship at 0.787. Sepal width 
+also flips from negative overall to positive within each species, which is a 
+classic Simpson's paradox situation. Setosa stays the most visually distinct 
+cluster no matter which variables you look at.
+
+
+# Question 3 - Choropleth Maps
+
+```{r q3-setup, message=FALSE, warning=FALSE}
+library(tidycensus)
+library(sf)
+library(tidyverse)
+library(patchwork)
+
+# Download median household income for WA counties
+income_data <- get_acs(
+  geography = "county",
+  variables = "B19013_001",
+  state     = "Washington",
+  year      = 2024,
+  geometry  = TRUE
+)
+
+# Download education variables (bachelor's + total pop)
+education_data <- get_acs(
+  geography = "county",
+  variables = c("B15003_022", "B01003_001"),
+  state     = "Washington",
+  year      = 2024,
+  geometry  = TRUE
+)
+
+# Download median home value
+home_value_data <- get_acs(
+  geography = "county",
+  variables = "B25077_001",
+  state     = "Washington",
+  year      = 2024,
+  geometry  = TRUE
+)
+
+cat("Income rows:", nrow(income_data), "\n")
+cat("Education rows:", nrow(education_data), "\n")
+cat("Home value rows:", nrow(home_value_data), "\n")
+```
+
+```{r q3-reshape, message=FALSE, warning=FALSE}
+# Education data needs special handling — sf blocks pivot_wider() directly
+# Step 1: Save geometry separately
+geometry_only <- education_data[, c("GEOID", "geometry")]
+
+# Step 2: Drop geometry so pivot_wider() can run
+education_no_geo <- st_drop_geometry(education_data)
+
+# Step 3: Pivot to wide format
+education_wide <- education_no_geo %>%
+  pivot_wider(id_cols     = GEOID,
+              names_from  = variable,
+              values_from = estimate)
+
+# Step 4: Rename columns
+names(education_wide)[names(education_wide) == "B15003_022"] <- "bachelors"
+names(education_wide)[names(education_wide) == "B01003_001"] <- "total_pop"
+
+# Step 5: Rejoin geometry
+complete_education <- left_join(geometry_only, education_wide, by = "GEOID") %>%
+  st_as_sf()
+
+# Step 6: Calculate percentage
+complete_education <- complete_education %>%
+  mutate(pct_bachelors = (bachelors / total_pop) * 100)
+
+head(complete_education)
+```
+
+```{r q3-maps, message=FALSE, warning=FALSE}
+# Map 1: Median Household Income
+map_income <- ggplot(income_data) +
+  geom_sf(aes(fill = estimate), color = "white", size = 0.3) +
+  scale_fill_viridis_c(option = "plasma",
+                       labels = scales::dollar_format()) +
+  labs(title    = "Median Household Income by County",
+       subtitle = "Washington State, 2024 ACS",
+       fill     = "Median Income",
+       caption  = "Source: US Census Bureau") +
+  theme_void()
+
+# Map 2: Bachelor's Degree Percentage
+map_education <- ggplot(complete_education) +
+  geom_sf(aes(fill = pct_bachelors), color = "white", size = 0.3) +
+  scale_fill_viridis_c(option = "mako",
+                       labels = function(x) paste0(round(x, 1), "%")) +
+  labs(title    = "Adults with Bachelor's Degrees or Higher",
+       subtitle = "Washington State, 2024 ACS",
+       fill     = "% with Bachelor's",
+       caption  = "Source: US Census Bureau") +
+  theme_void()
+
+# Map 3: Median Home Value
+map_homevalue <- ggplot(home_value_data) +
+  geom_sf(aes(fill = estimate), color = "white", size = 0.3) +
+  scale_fill_viridis_c(option = "rocket",
+                       labels = scales::dollar_format()) +
+  labs(title    = "Median Home Value by County",
+       subtitle = "Washington State, 2024 ACS",
+       fill     = "Median Home Value",
+       caption  = "Source: US Census Bureau") +
+  theme_void()
+
+# Display all three maps
+map_income
+map_education
+map_homevalue
+```
+
+
+All three maps tell the same story: the Seattle area dominates across every 
+measure. King County and its neighbors have the highest incomes, most college 
+graduates, and home values pushing past $800,000. The eastern half of the state 
+is noticeably lower across the board, which tracks with how rural and agricultural 
+that region is.
+
+Kittitas County lands in the middle on all three maps, which makes sense for a 
+college town. CWU brings in students and faculty but also a lot of lower-income 
+residents, keeping the averages moderate. Home values are mid-range but have 
+probably been creeping up as remote workers from Seattle look for something more 
+affordable within driving distance.
