@@ -11,7 +11,7 @@
 
 <meta name="author" content="Jules Pellin" />
 
-<meta name="date" content="2026-05-28" />
+<meta name="date" content="2026-06-02" />
 
 <title>Final Project</title>
 
@@ -352,7 +352,7 @@ display: none;
 
 <h1 class="title toc-ignore">Final Project</h1>
 <h4 class="author">Jules Pellin</h4>
-<h4 class="date">2026-05-28</h4>
+<h4 class="date">2026-06-02</h4>
 
 </div>
 
@@ -376,6 +376,15 @@ noc_regions.csv which maps country codes to region names. Each row
 represents one athlete’s participation in one Olympic event, making it
 tidy by definition, every column is a variable, every row is an
 observation, and every cell contains a single value.</p>
+</div>
+<div id="workflow" class="section level2">
+<h2>Workflow</h2>
+<p>The script starts by loading and joining both files, then narrows
+things down to Summer Olympics only and drops athletes with missing
+height or weight data. A BMI column gets added from there, and the rest
+of the project builds off that cleaned dataset through four
+visualizations exploring how physical profiles vary across sports,
+sexes, and time.</p>
 <pre class="r"><code>library(tidyverse)
 library(ggridges)
 
